@@ -1,0 +1,37 @@
+# Build artifacts
+obj/
+*.o
+*.a
+*.so
+*.dylib
+
+# Executable
+taskmaster
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Log files
+*.log
+
+# IDE and editor files
+.vscode/
+.vagrant/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
