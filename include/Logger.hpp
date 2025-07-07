@@ -3,10 +3,9 @@
 #include <string>
 #include <fstream>
 #include <mutex>
-#include <chrono>
-#include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <iostream>
 
 enum class LogLevel {
     INFO,

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string>
-#include <vector>
 #include <map>
 #include <memory>
 #include <thread>
@@ -10,6 +9,7 @@
 #include <atomic>
 #include "Process.hpp"
 #include "ConfigParser.hpp"
+#include <iostream>
 #include "Logger.hpp"
 
 class TaskMaster {
@@ -31,7 +31,28 @@ private:
     void monitorProcesses();
     void checkProcessHealth();
     void restartFailedProcesses();
+    bool shouldRestartProcess(const std::string& name, const std::unique_ptr<Process>& process);
+    void handleProcessNotRestarting(const std::string& name, const std::unique_ptr<Process>& process);
+    void attemptProcessRestart(const std::string& name, const std::unique_ptr<Process>& process);
+    void startAutostartProcesses();
+    void processCommands();
+    std::string trimString(const std::string& str);
+    bool executeCommand(const std::string& command);
+    bool handleStatusCommand(std::istringstream& iss);
+    bool handleStartCommand(std::istringstream& iss);
+    bool handleStopCommand(std::istringstream& iss);
+    bool handleRestartCommand(std::istringstream& iss);
+    bool handleReloadCommand();
+    bool handleHelpCommand();
     
+    void removeObsoleteProcesses(const std::map<std::string, ProcessConfig>& new_configs);
+    void updateProcessConfigurations(const std::map<std::string, ProcessConfig>& new_configs);
+    void addNewProcess(const std::string& instance_name, const ProcessConfig& config);
+    void updateExistingProcess(const std::string& instance_name, const ProcessConfig& new_config, 
+                              std::unique_ptr<Process>& process);
+    bool hasConfigurationChanged(const ProcessConfig& old_config, const ProcessConfig& new_config);
+    std::string createInstanceName(const std::string& base_name, int numprocs, int instance_index);
+    std::string extractBaseName(const std::string& instance_name);
     std::string config_file;
     ConfigParser config_parser;
     std::map<std::string, std::unique_ptr<Process>> processes;

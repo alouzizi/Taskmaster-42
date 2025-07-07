@@ -1,8 +1,8 @@
 #include <iostream>
 #include <memory>
 #include <signal.h>
-#include "TaskMaster.hpp"
-#include "Logger.hpp"
+#include "../include/TaskMaster.hpp"
+#include "../include/Logger.hpp"
 
 std::unique_ptr<TaskMaster> g_taskmaster;
 

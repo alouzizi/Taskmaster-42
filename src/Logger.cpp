@@ -1,5 +1,4 @@
-#include "Logger.hpp"
-#include <iostream>
+#include "../include/Logger.hpp"
 
 Logger& Logger::getInstance() {
     static Logger instance;

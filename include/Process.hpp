@@ -5,6 +5,17 @@
 #include <map>
 #include <chrono>
 #include <atomic>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <signal.h>
+#include <iostream>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <thread>
+#include <chrono>
+#include <errno.h>
+#include <algorithm>
 
 enum class ProcessState {
     STOPPED,
@@ -84,5 +95,7 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> last_restart;
     
     bool executeCommand();
+    void setupChildProcess();
+    std::vector<std::string> parseCommand() const;
     bool killProcess(const std::string& signal = "TERM");
 };

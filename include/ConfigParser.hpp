@@ -2,6 +2,10 @@
 
 #include <string>
 #include <map>
+#include <iostream>
+#include <algorithm>
+#include <cctype>
+#include <sstream>
 #include "Process.hpp"
 
 struct IniParserData {

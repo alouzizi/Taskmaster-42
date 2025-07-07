@@ -1,9 +1,5 @@
-#include "ConfigParser.hpp"
-#include "ini.h"
-#include <iostream>
-#include <algorithm>
-#include <cctype>
-#include <sstream>
+#include "../include/ConfigParser.hpp"
+#include "../include/ini.h"
 
 int ConfigParser::iniHandler(void* user, const char* section, const char* name, const char* value) {
     IniParserData* data = static_cast<IniParserData*>(user);
@@ -14,7 +10,7 @@ int ConfigParser::iniHandler(void* user, const char* section, const char* name, 
     
     data->sections[section_str][name_str] = value_str;
     
-    return 1; // Success
+    return 1;
 }
 
 bool ConfigParser::parseFile(const std::string& filename) {
@@ -80,7 +76,7 @@ void ConfigParser::parseProgramSection(const std::string& section_name,
             } else if (key == "environment") {
                 config.environment = parseEnvironment(value);
             } else if (key == "umask") {
-                config.umask = std::stoi(value, nullptr, 8); // Parse as octal
+                config.umask = std::stoi(value, nullptr, 8);
             }
         } catch (const std::exception& e) {
             std::cerr << "Warning: Invalid value for " << key << " in program " << prog_name 
@@ -151,7 +147,7 @@ AutoStart ConfigParser::parseAutoStart(const std::string& value) {
         return AutoStart::UNEXPECTED;
     }
     
-    return AutoStart::TRUE; // Default
+    return AutoStart::TRUE;
 }
 
 AutoRestart ConfigParser::parseAutoRestart(const std::string& value) {
@@ -166,5 +162,5 @@ AutoRestart ConfigParser::parseAutoRestart(const std::string& value) {
         return AutoRestart::UNEXPECTED;
     }
     
-    return AutoRestart::TRUE; // Default
+    return AutoRestart::TRUE;
 }

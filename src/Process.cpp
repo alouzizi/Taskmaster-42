@@ -1,17 +1,5 @@
-#include "Process.hpp"
-#include "Logger.hpp"
-#include <unistd.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <iostream>
-#include <sstream>
-#include <cstring>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <thread>
-#include <chrono>
-#include <errno.h>
-#include <algorithm>
+#include "../include/Process.hpp"
+#include "../include/Logger.hpp"
 
 Process::Process(const ProcessConfig& config) 
     : config(config), state(ProcessState::STOPPED), pid(-1), restart_count(0), last_exit_status(0) {
@@ -25,7 +13,7 @@ Process::~Process() {
 
 bool Process::start() {
     if (state == ProcessState::RUNNING) {
-        return true; // Already running
+        return true;
     }
     
     setState(ProcessState::STARTING);
@@ -42,7 +30,7 @@ bool Process::start() {
 
 bool Process::stop() {
     if (state != ProcessState::RUNNING) {
-        return true; // Already stopped
+        return true;
     }
     
     setState(ProcessState::STOPPING);
@@ -155,75 +143,17 @@ bool Process::executeCommand() {
     }
     
     if (child_pid == 0) {
+        setupChildProcess();
         
-        if (!config.stdout_logfile.empty()) {
-            int stdout_fd;
-            if (config.stdout_logfile == "/dev/null") {
-                stdout_fd = open("/dev/null", O_WRONLY);
-            } else {
-                stdout_fd = open(config.stdout_logfile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-            }
-            if (stdout_fd != -1) {
-                dup2(stdout_fd, STDOUT_FILENO);
-                close(stdout_fd);
-            }
-        }
-        
-        if (!config.stderr_logfile.empty()) {
-            int stderr_fd;
-            if (config.stderr_logfile == "/dev/null") {
-                stderr_fd = open("/dev/null", O_WRONLY);
-            } else {
-                stderr_fd = open(config.stderr_logfile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
-            }
-            if (stderr_fd != -1) {
-                dup2(stderr_fd, STDERR_FILENO);
-                close(stderr_fd);
-            }
-        }
-        
-        if (chdir(config.workingdir.c_str()) != 0) {
-            std::cerr << "Failed to change directory to " << config.workingdir << std::endl;
-            exit(1);
-        }
-        
-        umask(config.umask);
-        
-        for (const auto& [key, value] : config.environment) {
-            setenv(key.c_str(), value.c_str(), 1);
-        }
-        
-        std::vector<std::string> tokens;
-        std::string current_token;
-        bool in_quotes = false;
-        
-        for (size_t i = 0; i < config.command.length(); ++i) {
-            char c = config.command[i];
-            
-            if (c == '"' && (i == 0 || config.command[i-1] != '\\')) {
-                in_quotes = !in_quotes;
-            } else if (c == ' ' && !in_quotes) {
-                if (!current_token.empty()) {
-                    tokens.push_back(current_token);
-                    current_token.clear();
-                }
-            } else {
-                current_token += c;
-            }
-        }
-        
-        if (!current_token.empty()) {
-            tokens.push_back(current_token);
-        }
-        
+        auto tokens = parseCommand();
         if (tokens.empty()) {
             std::cerr << "Empty command for process " << config.name << std::endl;
             exit(1);
         }
         
         std::vector<char*> args;
-        for (const auto& t : tokens) {
-            args.push_back(const_cast<char*>(t.c_str()));
+        for (const auto& token : tokens) {
+            args.push_back(const_cast<char*>(token.c_str()));
         }
         args.push_back(nullptr);
         
@@ -235,6 +165,72 @@ bool Process::executeCommand() {
         pid = child_pid;
         return true;
     }
+}
+
+void Process::setupChildProcess() {
+    if (!config.stdout_logfile.empty()) {
+        int stdout_fd;
+        if (config.stdout_logfile == "/dev/null") {
+            stdout_fd = open("/dev/null", O_WRONLY);
+        } else {
+            stdout_fd = open(config.stdout_logfile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        }
+        if (stdout_fd != -1) {
+            dup2(stdout_fd, STDOUT_FILENO);
+            close(stdout_fd);
+        }
+    }
+    
+    if (!config.stderr_logfile.empty()) {
+        int stderr_fd;
+        if (config.stderr_logfile == "/dev/null") {
+            stderr_fd = open("/dev/null", O_WRONLY);
+        } else {
+            stderr_fd = open(config.stderr_logfile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        }
+        if (stderr_fd != -1) {
+            dup2(stderr_fd, STDERR_FILENO);
+            close(stderr_fd);
+        }
+    }
+    
+    if (chdir(config.workingdir.c_str()) != 0) {
+        std::cerr << "Failed to change directory to " << config.workingdir << std::endl;
+        exit(1);
+    }
+    
+    umask(config.umask);
+    
+    for (const auto& [key, value] : config.environment) {
+        setenv(key.c_str(), value.c_str(), 1);
+    }
+}
+
+std::vector<std::string> Process::parseCommand() const {
+    std::vector<std::string> tokens;
+    std::string current_token;
+    bool in_quotes = false;
+    
+    for (size_t i = 0; i < config.command.length(); ++i) {
+        char c = config.command[i];
+        
+        if (c == '"' && (i == 0 || config.command[i-1] != '\\')) {
+            in_quotes = !in_quotes;
+        } else if (c == ' ' && !in_quotes) {
+            if (!current_token.empty()) {
+                tokens.push_back(current_token);
+                current_token.clear();
+            }
+        } else {
+            current_token += c;
+        }
+    }
+    
+    if (!current_token.empty()) {
+        tokens.push_back(current_token);
+    }
+    
+    return tokens;
 }
 
 void Process::setState(ProcessState state) {

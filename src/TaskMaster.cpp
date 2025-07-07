@@ -1,9 +1,4 @@
-#include "TaskMaster.hpp"
-#include <iostream>
-#include <algorithm>
-#include <thread>
-#include <chrono>
-#include <sstream>
+#include "../include/TaskMaster.hpp"
 
 TaskMaster::TaskMaster(const std::string& config_file) 
     : config_file(config_file), running(false) {
@@ -43,21 +38,29 @@ TaskMaster::~TaskMaster() {
 void TaskMaster::run() {
     running = true;
     
-    {
-        std::lock_guard<std::mutex> lock(processes_mutex);
-        for (const auto& [name, process] : processes) {
-            if (process->getConfig().autostart == AutoStart::TRUE) {
-                if (process->start()) {
-                    Logger::getInstance().logProcessStarted(name, process->getPid());
-                }
-            }
-        }
-    }
+    startAutostartProcesses();
     
     monitor_thread = std::thread(&TaskMaster::monitorProcesses, this);
     
     std::cout << "TaskMaster is running. Type 'help' for commands." << std::endl;
     
+    processCommands();
+    
+    shutdown();
+}
+
+void TaskMaster::startAutostartProcesses() {
+    std::lock_guard<std::mutex> lock(processes_mutex);
+    for (const auto& [name, process] : processes) {
+        if (process->getConfig().autostart == AutoStart::TRUE) {
+            if (process->start()) {
+                Logger::getInstance().logProcessStarted(name, process->getPid());
+            }
+        }
+    }
+}
+
+void TaskMaster::processCommands() {
     std::string command;
     while (running) {
         std::cout << "taskmaster> ";
@@ -65,70 +68,114 @@ void TaskMaster::run() {
             break;
         }
         
-        command.erase(0, command.find_first_not_of(" \t"));
-        command.erase(command.find_last_not_of(" \t") + 1);
-        
+        command = trimString(command);
         if (command.empty()) continue;
         
-        std::istringstream iss(command);
-        std::string cmd;
-        iss >> cmd;
-        if (cmd == "status") {
-            std::cout << getStatus() << std::endl;
-        } else if (cmd == "start") {
-            std::string name;
-            iss >> name;
-            if (name.empty()) {
-                std::cout << "Usage: start <program_name>" << std::endl;
-            } else if (startProgram(name)) {
-                std::cout << "Started " << name << std::endl;
-            } else {
-                std::cout << "Failed to start " << name << std::endl;
-            }
-        } else if (cmd == "stop") {
-            std::string name;
-            iss >> name;
-            if (name.empty()) {
-                std::cout << "Usage: stop <program_name>" << std::endl;
-            } else if (stopProgram(name)) {
-                std::cout << "Stopped " << name << std::endl;
-            } else {
-                std::cout << "Failed to stop " << name << std::endl;
-            }
-        } else if (cmd == "restart") {
-            std::string name;
-            iss >> name;
-            if (name.empty()) {
-                std::cout << "Usage: restart <program_name>" << std::endl;
-            } else if (restartProgram(name)) {
-                std::cout << "Restarted " << name << std::endl;
-            } else {
-                std::cout << "Failed to restart " << name << std::endl;
-            }
-        } else if (cmd == "reload") {
-            if (reloadConfig()) {
-                std::cout << "Configuration reloaded" << std::endl;
-                Logger::getInstance().logConfigReloaded();
-            } else {
-                std::cout << "Failed to reload configuration" << std::endl;
-                Logger::getInstance().error("Failed to reload configuration");
-            }
-        } else if (cmd == "quit" || cmd == "exit") {
+        if (!executeCommand(command)) {
             break;
-        } else if (cmd == "help") {
-            std::cout << "Available commands:" << std::endl;
-            std::cout << "  status          - Show status of all processes" << std::endl;
-            std::cout << "  start <name>    - Start a process" << std::endl;
-            std::cout << "  stop <name>     - Stop a process" << std::endl;
-            std::cout << "  restart <name>  - Restart a process" << std::endl;
-            std::cout << "  reload          - Reload configuration" << std::endl;
-            std::cout << "  quit/exit       - Exit TaskMaster" << std::endl;
-        } else {
-            std::cout << "Unknown command: " << cmd << ". Type 'help' for available commands." << std::endl;
         }
     }
+}
+
+std::string TaskMaster::trimString(const std::string& str) {
+    size_t first = str.find_first_not_of(" \t");
+    if (first == std::string::npos) return "";
     
-    shutdown();
+    size_t last = str.find_last_not_of(" \t");
+    return str.substr(first, (last - first + 1));
+}
+
+bool TaskMaster::executeCommand(const std::string& command) {
+    std::istringstream iss(command);
+    std::string cmd;
+    iss >> cmd;
+    
+    if (cmd == "status") {
+        return handleStatusCommand(iss);
+    } else if (cmd == "start") {
+        return handleStartCommand(iss);
+    } else if (cmd == "stop") {
+        return handleStopCommand(iss);
+    } else if (cmd == "restart") {
+        return handleRestartCommand(iss);
+    } else if (cmd == "reload") {
+        return handleReloadCommand();
+    } else if (cmd == "quit" || cmd == "exit") {
+        return false;
+    } else if (cmd == "help") {
+        return handleHelpCommand();
+    } else {
+        std::cout << "Unknown command: " << cmd << ". Type 'help' for available commands." << std::endl;
+        return true;
+    }
+}
+
+bool TaskMaster::handleStatusCommand(std::istringstream& iss) {
+    std::string name;
+    iss >> name;
+    std::cout << getStatus(name) << std::endl;
+    return true;
+}
+
+bool TaskMaster::handleStartCommand(std::istringstream& iss) {
+    std::string name;
+    iss >> name;
+    if (name.empty()) {
+        std::cout << "Usage: start <program_name>" << std::endl;
+    } else if (startProgram(name)) {
+        std::cout << "Started " << name << std::endl;
+    } else {
+        std::cout << "Failed to start " << name << std::endl;
+    }
+    return true;
+}
+
+bool TaskMaster::handleStopCommand(std::istringstream& iss) {
+    std::string name;
+    iss >> name;
+    if (name.empty()) {
+        std::cout << "Usage: stop <program_name>" << std::endl;
+    } else if (stopProgram(name)) {
+        std::cout << "Stopped " << name << std::endl;
+    } else {
+        std::cout << "Failed to stop " << name << std::endl;
+    }
+    return true;
+}
+
+bool TaskMaster::handleRestartCommand(std::istringstream& iss) {
+    std::string name;
+    iss >> name;
+    if (name.empty()) {
+        std::cout << "Usage: restart <program_name>" << std::endl;
+    } else if (restartProgram(name)) {
+        std::cout << "Restarted " << name << std::endl;
+    } else {
+        std::cout << "Failed to restart " << name << std::endl;
+    }
+    return true;
+}
+
+bool TaskMaster::handleReloadCommand() {
+    if (reloadConfig()) {
+        std::cout << "Configuration reloaded" << std::endl;
+        Logger::getInstance().logConfigReloaded();
+    } else {
+        std::cout << "Failed to reload configuration" << std::endl;
+        Logger::getInstance().error("Failed to reload configuration");
+    }
+    return true;
+}
+
+bool TaskMaster::handleHelpCommand() {
+    std::cout << "Available commands:" << std::endl;
+    std::cout << "  status [name]   - Show status of all processes or specific process" << std::endl;
+    std::cout << "  start <name>    - Start a process" << std::endl;
+    std::cout << "  stop <name>     - Stop a process" << std::endl;
+    std::cout << "  restart <name>  - Restart a process" << std::endl;
+    std::cout << "  reload          - Reload configuration" << std::endl;
+    std::cout << "  quit/exit       - Exit TaskMaster" << std::endl;
+    return true;
 }
 
 void TaskMaster::shutdown() {
@@ -235,67 +282,109 @@ bool TaskMaster::reloadConfig() {
     
     auto new_configs = config_parser.getProcessConfigs();
     
+    removeObsoleteProcesses(new_configs);
+    
+    updateProcessConfigurations(new_configs);
+    
+    return true;
+}
+
+void TaskMaster::removeObsoleteProcesses(const std::map<std::string, ProcessConfig>& new_configs) {
     for (auto it = processes.begin(); it != processes.end();) {
-        if (new_configs.find(it->first) == new_configs.end()) {
+        const std::string& process_name = extractBaseName(it->first);
+        
+        if (new_configs.find(process_name) == new_configs.end()) {
             Logger::getInstance().info("Removing process " + it->first + " (no longer in configuration)");
+            
             if (it->second->getState() == ProcessState::RUNNING) {
                 it->second->stop();
             }
+            
             it = processes.erase(it);
         } else {
             ++it;
         }
     }
-    
+}
+
+void TaskMaster::updateProcessConfigurations(const std::map<std::string, ProcessConfig>& new_configs) {
     for (const auto& [name, new_config] : new_configs) {
-        auto it = processes.find(name);
-        if (it == processes.end()) {
-            Logger::getInstance().info("Adding new process " + name + " from configuration");
-            processes[name] = std::make_unique<Process>(new_config);
-            if (new_config.autostart == AutoStart::TRUE) {
-                if (processes[name]->start()) {
-                    Logger::getInstance().logProcessStarted(name, processes[name]->getPid());
-                }
-            }
-        } else {
-            const auto& old_config = it->second->getConfig();
-            bool config_changed = false;
+        for (int i = 0; i < new_config.numprocs; i++) {
+            std::string instance_name = createInstanceName(name, new_config.numprocs, i);
             
-            if (old_config.command != new_config.command ||
-                old_config.autostart != new_config.autostart ||
-                old_config.autorestart != new_config.autorestart ||
-                old_config.autorestart_exit_codes != new_config.autorestart_exit_codes ||
-                old_config.startretries != new_config.startretries ||
-                old_config.starttime != new_config.starttime ||
-                old_config.stopsignal != new_config.stopsignal ||
-                old_config.stoptime != new_config.stoptime ||
-                old_config.stdout_logfile != new_config.stdout_logfile ||
-                old_config.stderr_logfile != new_config.stderr_logfile ||
-                old_config.workingdir != new_config.workingdir ||
-                old_config.environment != new_config.environment ||
-                old_config.umask != new_config.umask) {
-                config_changed = true;
-            }
-            
-            if (config_changed) {
-                Logger::getInstance().info("Configuration changed for process " + name + ", restarting");
-                
-                if (it->second->getState() == ProcessState::RUNNING) {
-                    it->second->stop();
-                }
-                
-                processes[name] = std::make_unique<Process>(new_config);
-                
-                if (new_config.autostart == AutoStart::TRUE) {
-                    if (processes[name]->start()) {
-                        Logger::getInstance().logProcessStarted(name, processes[name]->getPid());
-                    }
-                }
+            auto it = processes.find(instance_name);
+            if (it == processes.end()) {
+                addNewProcess(instance_name, new_config);
+            } else {
+                updateExistingProcess(instance_name, new_config, it->second);
             }
         }
     }
+}
+
+void TaskMaster::addNewProcess(const std::string& instance_name, const ProcessConfig& config) {
+    Logger::getInstance().info("Adding new process " + instance_name + " from configuration");
     
-    return true;
+    processes[instance_name] = std::make_unique<Process>(config);
+    
+    if (config.autostart == AutoStart::TRUE) {
+        if (processes[instance_name]->start()) {
+            Logger::getInstance().logProcessStarted(instance_name, processes[instance_name]->getPid());
+        }
+    }
+}
+
+void TaskMaster::updateExistingProcess(const std::string& instance_name, const ProcessConfig& new_config, 
+                                     std::unique_ptr<Process>& process) {
+    if (hasConfigurationChanged(process->getConfig(), new_config)) {
+        Logger::getInstance().info("Configuration changed for process " + instance_name + ", restarting");
+        
+        if (process->getState() == ProcessState::RUNNING) {
+            process->stop();
+        }
+        
+        processes[instance_name] = std::make_unique<Process>(new_config);
+        
+        if (new_config.autostart == AutoStart::TRUE) {
+            if (processes[instance_name]->start()) {
+                Logger::getInstance().logProcessStarted(instance_name, processes[instance_name]->getPid());
+            }
+        }
+    }
+}
+
+bool TaskMaster::hasConfigurationChanged(const ProcessConfig& old_config, const ProcessConfig& new_config) {
+    return old_config.command != new_config.command ||
+           old_config.autostart != new_config.autostart ||
+           old_config.autorestart != new_config.autorestart ||
+           old_config.autorestart_exit_codes != new_config.autorestart_exit_codes ||
+           old_config.startretries != new_config.startretries ||
+           old_config.starttime != new_config.starttime ||
+           old_config.stopsignal != new_config.stopsignal ||
+           old_config.stoptime != new_config.stoptime ||
+           old_config.stdout_logfile != new_config.stdout_logfile ||
+           old_config.stderr_logfile != new_config.stderr_logfile ||
+           old_config.workingdir != new_config.workingdir ||
+           old_config.environment != new_config.environment ||
+           old_config.umask != new_config.umask;
+}
+
+std::string TaskMaster::createInstanceName(const std::string& base_name, int numprocs, int instance_index) {
+    if (numprocs == 1) {
+        return base_name;
+    }
+    return base_name + "_" + std::to_string(instance_index);
+}
+
+std::string TaskMaster::extractBaseName(const std::string& instance_name) {
+    size_t underscore_pos = instance_name.find_last_of('_');
+    if (underscore_pos != std::string::npos) {
+        std::string suffix = instance_name.substr(underscore_pos + 1);
+        if (std::all_of(suffix.begin(), suffix.end(), ::isdigit)) {
+            return instance_name.substr(0, underscore_pos);
+        }
+    }
+    return instance_name;
 }
 
 void TaskMaster::monitorProcesses() {
@@ -345,55 +434,82 @@ void TaskMaster::checkProcessHealth() {
 void TaskMaster::restartFailedProcesses() {
     for (const auto& [name, process] : processes) {
         const auto& config = process->getConfig();
+        ProcessState state = process->getState();
         
-        if (process->getState() == ProcessState::EXITED || process->getState() == ProcessState::BACKOFF) {
-            bool should_restart = false;
-            int last_exit_code = process->getLastExitStatus();
-            
-            if (process->getState() == ProcessState::BACKOFF) {
-                should_restart = true;
-                Logger::getInstance().info("Process " + name + " failed during startup, attempting restart");
-            } else {
-                if (config.autorestart == AutoRestart::TRUE) {
-                    if (!config.autorestart_exit_codes.empty()) {
-                        if (!process->isExpectedExitCode(last_exit_code)) {
-                            should_restart = true;
-                        }
-                    } else {
-                        should_restart = true;
-                    }
-                } else if (config.autorestart == AutoRestart::UNEXPECTED) {
-                    if (!process->isExpectedExitCode(last_exit_code)) {
-                        should_restart = true;
-                    }
-                }
-            }
-            
-            if (!should_restart) {
-                if (config.autorestart == AutoRestart::FALSE) {
-                    Logger::getInstance().info("Process " + name + " exited with code " + std::to_string(last_exit_code) + ", not restarting (autorestart=false)");
-                } else {
-                    Logger::getInstance().info("Process " + name + " exited with expected exit code " + std::to_string(last_exit_code) + ", not restarting");
-                }
-                process->setState(ProcessState::STOPPED);
-            } else if (process->getRestartCount() < config.startretries) {
-                int next_attempt = process->getRestartCount() + 1;
-                Logger::getInstance().logProcessRestart(name, next_attempt, config.startretries);
-                
-                if (process->getState() == ProcessState::BACKOFF) {
-                    Logger::getInstance().info("Process " + name + " startup failed, restarting (attempt " + std::to_string(next_attempt) + "/" + std::to_string(config.startretries) + ")");
-                } else {
-                    Logger::getInstance().info("Process " + name + " exited with code " + std::to_string(last_exit_code) + ", restarting (attempt " + std::to_string(next_attempt) + "/" + std::to_string(config.startretries) + ")");
-                }
-                
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                if (process->restart()) {
-                    Logger::getInstance().logProcessStarted(name, process->getPid());
-                }
-            } else {
-                Logger::getInstance().error("Process " + name + " has exceeded maximum restart attempts and is in FATAL state");
-                process->setState(ProcessState::FATAL);
-            }
+        if (state != ProcessState::EXITED && state != ProcessState::BACKOFF) {
+            continue;
         }
+        
+        if (!shouldRestartProcess(name, process)) {
+            handleProcessNotRestarting(name, process);
+            continue;
+        }
+        
+        if (process->getRestartCount() >= config.startretries) {
+            Logger::getInstance().error("Process " + name + " has exceeded maximum restart attempts and is in FATAL state");
+            process->setState(ProcessState::FATAL);
+            continue;
+        }
+        
+        attemptProcessRestart(name, process);
+    }
+}
+
+bool TaskMaster::shouldRestartProcess(const std::string& name, const std::unique_ptr<Process>& process) {
+    const auto& config = process->getConfig();
+    int last_exit_code = process->getLastExitStatus();
+    
+    if (process->getState() == ProcessState::BACKOFF) {
+        Logger::getInstance().info("Process " + name + " failed during startup, attempting restart");
+        return true;
+    }
+    
+    switch (config.autorestart) {
+        case AutoRestart::TRUE:
+            return config.autorestart_exit_codes.empty() || 
+                   !process->isExpectedExitCode(last_exit_code);
+        
+        case AutoRestart::UNEXPECTED:
+            return !process->isExpectedExitCode(last_exit_code);
+        
+        case AutoRestart::FALSE:
+        default:
+            return false;
+    }
+}
+
+void TaskMaster::handleProcessNotRestarting(const std::string& name, const std::unique_ptr<Process>& process) {
+    const auto& config = process->getConfig();
+    int last_exit_code = process->getLastExitStatus();
+    
+    if (config.autorestart == AutoRestart::FALSE) {
+        Logger::getInstance().info("Process " + name + " exited with code " + 
+                                 std::to_string(last_exit_code) + ", not restarting (autorestart=false)");
+    } else {
+        Logger::getInstance().info("Process " + name + " exited with expected exit code " + 
+                                 std::to_string(last_exit_code) + ", not restarting");
+    }
+    process->setState(ProcessState::STOPPED);
+}
+
+void TaskMaster::attemptProcessRestart(const std::string& name, const std::unique_ptr<Process>& process) {
+    const auto& config = process->getConfig();
+    int next_attempt = process->getRestartCount() + 1;
+    int last_exit_code = process->getLastExitStatus();
+    
+    Logger::getInstance().logProcessRestart(name, next_attempt, config.startretries);
+    
+    if (process->getState() == ProcessState::BACKOFF) {
+        Logger::getInstance().info("Process " + name + " startup failed, restarting (attempt " + 
+                                 std::to_string(next_attempt) + "/" + std::to_string(config.startretries) + ")");
+    } else {
+        Logger::getInstance().info("Process " + name + " exited with code " + std::to_string(last_exit_code) + 
+                                 ", restarting (attempt " + std::to_string(next_attempt) + "/" + 
+                                 std::to_string(config.startretries) + ")");
+    }
+    
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (process->restart()) {
+        Logger::getInstance().logProcessStarted(name, process->getPid());
     }
 }
