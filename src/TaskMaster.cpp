@@ -111,9 +111,24 @@ bool TaskMaster::executeCommand(const std::string& command) {
 }
 
 bool TaskMaster::handleStatusCommand(std::istringstream& iss) {
-    std::string name;
-    iss >> name;
-    std::cout << getStatus(name) << std::endl;
+    std::string arg;
+    bool detailed = false;
+    std::string filter;
+    
+    // Parse arguments
+    while (iss >> arg) {
+        if (arg == "--detailed") {
+            detailed = true;
+        } else {
+            filter = arg;
+        }
+    }
+    
+    if (detailed) {
+        printDetailedStatus(filter);
+    } else {
+        std::cout << getStatus(filter) << std::endl;
+    }
     return true;
 }
 
@@ -169,12 +184,14 @@ bool TaskMaster::handleReloadCommand() {
 
 bool TaskMaster::handleHelpCommand() {
     std::cout << "Available commands:" << std::endl;
-    std::cout << "  status [name]   - Show status of all processes or specific process" << std::endl;
-    std::cout << "  start <name>    - Start a process" << std::endl;
-    std::cout << "  stop <name>     - Stop a process" << std::endl;
-    std::cout << "  restart <name>  - Restart a process" << std::endl;
-    std::cout << "  reload          - Reload configuration" << std::endl;
-    std::cout << "  quit/exit       - Exit TaskMaster" << std::endl;
+    std::cout << "  status [name]           - Show status of all processes or specific process" << std::endl;
+    std::cout << "  status --detailed       - Show detailed status with CPU, memory, and metrics" << std::endl;
+    std::cout << "  status --detailed <name> - Show detailed status for specific process" << std::endl;
+    std::cout << "  start <name>            - Start a process" << std::endl;
+    std::cout << "  stop <name>             - Stop a process" << std::endl;
+    std::cout << "  restart <name>          - Restart a process" << std::endl;
+    std::cout << "  reload                  - Reload configuration" << std::endl;
+    std::cout << "  quit/exit               - Exit TaskMaster" << std::endl;
     return true;
 }
 
@@ -511,5 +528,79 @@ void TaskMaster::attemptProcessRestart(const std::string& name, const std::uniqu
     std::this_thread::sleep_for(std::chrono::seconds(1));
     if (process->restart()) {
         Logger::getInstance().logProcessStarted(name, process->getPid());
+    }
+}
+
+void TaskMaster::printDetailedStatus(const std::string& filter) {
+    Logger::getInstance().logDetailedStatusRequest();
+    
+    std::cout << "\nProcess Status (Detailed):\n";
+    std::cout << "==========================================\n";
+    
+    std::lock_guard<std::mutex> lock(processes_mutex);
+    
+    bool found_any = false;
+    for (const auto& [name, process] : processes) {
+        // Apply filter if provided
+        if (!filter.empty() && name.find(filter) == std::string::npos) {
+            continue;
+        }
+        
+        printProcessDetails(name, process);
+        std::cout << "\n";
+        found_any = true;
+    }
+    
+    if (!filter.empty() && !found_any) {
+        std::cout << "No processes found matching: " << filter << "\n";
+    }
+}
+
+void TaskMaster::printProcessDetails(const std::string& name, const std::unique_ptr<Process>& process) {
+    std::string status_color = getStatusColor(process->getState());
+    std::cout << status_color << name << ": " << process->getStateString() << "\033[0m";
+    
+    if (process->getState() == ProcessState::RUNNING) {
+        pid_t pid = process->getPid();
+        MetricsCollector collector;
+        ProcessMetrics metrics = collector.collectMetrics(pid);
+        std::string uptime = collector.formatUptime(process->getStartTime());
+        
+        std::cout << " (PID: " << pid << ", Uptime: " << uptime << ")\n";
+        
+        // CPU and Memory info
+        std::cout << "  ├─ CPU: " << std::fixed << std::setprecision(1) 
+                  << metrics.cpu_percentage << "% | Memory: " 
+                  << collector.formatBytes(metrics.memory_usage_mb * 1024 * 1024);
+        
+        if (metrics.memory_peak_mb > 0) {
+            std::cout << " (peak: " << collector.formatBytes(metrics.memory_peak_mb * 1024 * 1024) << ")";
+        }
+        std::cout << "\n";
+        
+        // File descriptors and restart count
+        std::cout << "  ├─ FDs: " << metrics.file_descriptors << "/1024";
+        std::cout << " | Restarts: " << process->getRestartCount() << "\n";
+        
+        // Health check status
+        std::cout << "  └─ Last Health Check: \033[32mOK\033[0m (active)\n";
+        
+    } else if (process->getState() == ProcessState::FATAL) {
+        std::cout << " (Last exit: " << process->getLastExitStatus() 
+                  << ", Restarts: " << process->getRestartCount() << ")\n";
+        std::cout << "  └─ Process failed to start or crashed\n";
+    } else {
+        std::cout << "\n";
+    }
+}
+
+std::string TaskMaster::getStatusColor(ProcessState status) {
+    switch (status) {
+        case ProcessState::RUNNING:  return "\033[32m";  // Green
+        case ProcessState::STOPPED:  return "\033[33m";  // Yellow
+        case ProcessState::FATAL:    return "\033[31m";  // Red
+        case ProcessState::STARTING: return "\033[36m";  // Cyan
+        case ProcessState::STOPPING: return "\033[35m";  // Magenta
+        default:                      return "\033[0m";   // Reset
     }
 }

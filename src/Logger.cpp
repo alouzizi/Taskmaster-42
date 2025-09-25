@@ -119,3 +119,7 @@ void Logger::logTaskMasterStartup() {
 void Logger::logTaskMasterShutdown() {
     info("TaskMaster shutting down");
 }
+
+void Logger::logDetailedStatusRequest() {
+    debug("Detailed status information requested");
+}

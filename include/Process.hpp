@@ -83,6 +83,8 @@ public:
     
     bool isExpectedExitCode(int exit_code) const;
     
+    std::chrono::steady_clock::time_point getStartTime() const { return start_time; }
+    
     void setState(ProcessState state);
 
 private:

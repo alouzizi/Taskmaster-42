@@ -9,6 +9,7 @@
 #include <atomic>
 #include "Process.hpp"
 #include "ConfigParser.hpp"
+#include "ProcessMetrics.hpp"
 #include <iostream>
 #include "Logger.hpp"
 
@@ -26,6 +27,8 @@ public:
     std::string getStatus(const std::string& name = "");
     
     bool reloadConfig();
+    
+    const std::map<std::string, std::unique_ptr<Process>>& getProcesses() const { return processes; }
 
 private:
     void monitorProcesses();
@@ -44,6 +47,10 @@ private:
     bool handleRestartCommand(std::istringstream& iss);
     bool handleReloadCommand();
     bool handleHelpCommand();
+    
+    void printDetailedStatus(const std::string& filter = "");
+    void printProcessDetails(const std::string& name, const std::unique_ptr<Process>& process);
+    std::string getStatusColor(ProcessState status);
     
     void removeObsoleteProcesses(const std::map<std::string, ProcessConfig>& new_configs);
     void updateProcessConfigurations(const std::map<std::string, ProcessConfig>& new_configs);

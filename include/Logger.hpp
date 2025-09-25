@@ -33,6 +33,7 @@ public:
     void logConfigReloaded();
     void logTaskMasterStartup();
     void logTaskMasterShutdown();
+    void logDetailedStatusRequest();
 
 private:
     Logger() = default;
