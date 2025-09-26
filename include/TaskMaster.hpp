@@ -7,6 +7,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <vector>
+#include <fstream>
 #include "Process.hpp"
 #include "ConfigParser.hpp"
 #include "ProcessMetrics.hpp"
@@ -48,11 +50,14 @@ private:
     bool handleRestartCommand(std::istringstream& iss);
     bool handleReloadCommand();
     bool handleStatsCommand();
+    bool handleLogsCommand(std::istringstream& iss);
     bool handleHelpCommand();
     
     void printDetailedStatus(const std::string& filter = "");
     void printProcessDetails(const std::string& name, const std::unique_ptr<Process>& process);
     void printProcessStats();
+    void showProcessLogs(const std::string& process_name, int lines = 10);
+    void showLogFile(const std::string& log_file, int lines);
     std::string getStatusColor(ProcessState status);
     
     void removeObsoleteProcesses(const std::map<std::string, ProcessConfig>& new_configs);

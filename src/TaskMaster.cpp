@@ -102,6 +102,8 @@ bool TaskMaster::executeCommand(const std::string& command) {
         return handleReloadCommand();
     } else if (cmd == "stats") {
         return handleStatsCommand();
+    } else if (cmd == "logs") {
+        return handleLogsCommand(iss);
     } else if (cmd == "quit" || cmd == "exit") {
         return false;
     } else if (cmd == "help") {
@@ -189,12 +191,39 @@ bool TaskMaster::handleStatsCommand() {
     return true;
 }
 
+bool TaskMaster::handleLogsCommand(std::istringstream& iss) {
+    std::string process_name;
+    std::string lines_str;
+    int lines = 10;  // default
+    
+    iss >> process_name;
+    if (process_name.empty()) {
+        std::cout << "Usage: logs <process_name> [lines]" << std::endl;
+        std::cout << "Example: logs nginx 20" << std::endl;
+        return true;
+    }
+    
+    // Check if lines argument is provided
+    if (iss >> lines_str) {
+        try {
+            lines = std::stoi(lines_str);
+            if (lines <= 0) lines = 10;
+        } catch (const std::exception&) {
+            lines = 10;
+        }
+    }
+    
+    showProcessLogs(process_name, lines);
+    return true;
+}
+
 bool TaskMaster::handleHelpCommand() {
     std::cout << "Available commands:" << std::endl;
     std::cout << "  status [name]           - Show status of all processes or specific process" << std::endl;
     std::cout << "  status --detailed       - Show detailed status with CPU, memory, and metrics" << std::endl;
     std::cout << "  status --detailed <name> - Show detailed status for specific process" << std::endl;
     std::cout << "  stats                   - Show process statistics and system health" << std::endl;
+    std::cout << "  logs <name> [lines]     - Show process logs (default: 10 lines)" << std::endl;
     std::cout << "  start <name>            - Start a process" << std::endl;
     std::cout << "  stop <name>             - Stop a process" << std::endl;
     std::cout << "  restart <name>          - Restart a process" << std::endl;
@@ -684,6 +713,76 @@ void TaskMaster::printProcessStats() {
         std::cout << "\033[33m" << std::fixed << std::setprecision(1) << health_score << "% (WARNING)\033[0m\n";
     } else {
         std::cout << "\033[31m" << std::fixed << std::setprecision(1) << health_score << "% (CRITICAL)\033[0m\n";
+    }
+}
+
+void TaskMaster::showProcessLogs(const std::string& process_name, int lines) {
+    std::lock_guard<std::mutex> lock(processes_mutex);
+    
+    // Find the process
+    auto it = processes.find(process_name);
+    if (it == processes.end()) {
+        std::cout << "Process not found: " << process_name << std::endl;
+        return;
+    }
+    
+    const auto& process = it->second;
+    const auto& config = process->getConfig();
+    
+    std::cout << "\n\033[1mLogs for " << process_name << " (last " << lines << " lines):\033[0m\n";
+    std::cout << "=========================================\n";
+    
+    // Show stdout logs
+    if (!config.stdout_logfile.empty() && config.stdout_logfile != "/dev/null") {
+        std::cout << "\033[32m[STDOUT]\033[0m " << config.stdout_logfile << ":\n";
+        showLogFile(config.stdout_logfile, lines);
+    }
+    
+    // Show stderr logs
+    if (!config.stderr_logfile.empty() && config.stderr_logfile != "/dev/null") {
+        std::cout << "\n\033[31m[STDERR]\033[0m " << config.stderr_logfile << ":\n";
+        showLogFile(config.stderr_logfile, lines);
+    }
+    
+    // If no log files configured
+    if ((config.stdout_logfile.empty() || config.stdout_logfile == "/dev/null") &&
+        (config.stderr_logfile.empty() || config.stderr_logfile == "/dev/null")) {
+        std::cout << "\033[33mNo log files configured for this process.\033[0m\n";
+        std::cout << "Output goes to console or /dev/null.\n";
+    }
+}
+
+void TaskMaster::showLogFile(const std::string& log_file, int lines) {
+    std::ifstream file(log_file);
+    if (!file.is_open()) {
+        std::cout << "\033[31mError: Could not open log file: " << log_file << "\033[0m\n";
+        return;
+    }
+    
+    // Read all lines into a vector
+    std::vector<std::string> all_lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        all_lines.push_back(line);
+    }
+    file.close();
+    
+    if (all_lines.empty()) {
+        std::cout << "\033[33m(Log file is empty)\033[0m\n";
+        return;
+    }
+    
+    // Show last N lines
+    int start_line = std::max(0, static_cast<int>(all_lines.size()) - lines);
+    int line_number = start_line + 1;
+    
+    for (size_t i = start_line; i < all_lines.size(); ++i) {
+        std::cout << std::setw(4) << line_number++ << " | " << all_lines[i] << "\n";
+    }
+    
+    if (start_line > 0) {
+        std::cout << "\033[33m... (showing last " << lines << " of " 
+                  << all_lines.size() << " total lines)\033[0m\n";
     }
 }
 
