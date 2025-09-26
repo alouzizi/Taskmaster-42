@@ -100,6 +100,8 @@ bool TaskMaster::executeCommand(const std::string& command) {
         return handleRestartCommand(iss);
     } else if (cmd == "reload") {
         return handleReloadCommand();
+    } else if (cmd == "stats") {
+        return handleStatsCommand();
     } else if (cmd == "quit" || cmd == "exit") {
         return false;
     } else if (cmd == "help") {
@@ -182,11 +184,17 @@ bool TaskMaster::handleReloadCommand() {
     return true;
 }
 
+bool TaskMaster::handleStatsCommand() {
+    printProcessStats();
+    return true;
+}
+
 bool TaskMaster::handleHelpCommand() {
     std::cout << "Available commands:" << std::endl;
     std::cout << "  status [name]           - Show status of all processes or specific process" << std::endl;
     std::cout << "  status --detailed       - Show detailed status with CPU, memory, and metrics" << std::endl;
     std::cout << "  status --detailed <name> - Show detailed status for specific process" << std::endl;
+    std::cout << "  stats                   - Show process statistics and system health" << std::endl;
     std::cout << "  start <name>            - Start a process" << std::endl;
     std::cout << "  stop <name>             - Stop a process" << std::endl;
     std::cout << "  restart <name>          - Restart a process" << std::endl;
@@ -591,6 +599,91 @@ void TaskMaster::printProcessDetails(const std::string& name, const std::unique_
         std::cout << "  └─ Process failed to start or crashed\n";
     } else {
         std::cout << "\n";
+    }
+}
+
+void TaskMaster::printProcessStats() {
+    std::lock_guard<std::mutex> lock(processes_mutex);
+    
+    int total = 0;
+    int running = 0, stopped = 0, starting = 0, stopping = 0, failed = 0, exited = 0, backoff = 0;
+    int total_restarts = 0;
+    std::chrono::seconds total_uptime(0);
+    int running_count = 0;
+    
+    for (const auto& [name, process] : processes) {
+        total++;
+        ProcessState state = process->getState();
+        
+        switch (state) {
+            case ProcessState::RUNNING:
+                running++;
+                total_uptime += process->getUptime();
+                running_count++;
+                break;
+            case ProcessState::STOPPED:    stopped++; break;
+            case ProcessState::STARTING:   starting++; break;
+            case ProcessState::STOPPING:   stopping++; break;
+            case ProcessState::FATAL:      failed++; break;
+            case ProcessState::EXITED:     exited++; break;
+            case ProcessState::BACKOFF:    backoff++; break;
+            default: break;
+        }
+        
+        total_restarts += process->getRestartCount();
+    }
+    
+    // Calculate average uptime
+    std::string avg_uptime = "0s";
+    if (running_count > 0) {
+        auto avg_seconds = total_uptime.count() / running_count;
+        auto hours = avg_seconds / 3600;
+        auto minutes = (avg_seconds % 3600) / 60;
+        auto seconds = avg_seconds % 60;
+        
+        std::stringstream ss;
+        if (hours > 0) {
+            ss << hours << "h " << minutes << "m " << seconds << "s";
+        } else if (minutes > 0) {
+            ss << minutes << "m " << seconds << "s";
+        } else {
+            ss << seconds << "s";
+        }
+        avg_uptime = ss.str();
+    }
+    
+    std::cout << "\n\033[1mProcess Statistics:\033[0m\n";
+    std::cout << "==========================================\n";
+    std::cout << "Total Processes:     " << total << "\n";
+    std::cout << "\033[32mRunning:\033[0m             " << running;
+    if (starting > 0) std::cout << " (+" << starting << " starting)";
+    std::cout << "\n";
+    std::cout << "\033[33mStopped:\033[0m             " << stopped;
+    if (stopping > 0) std::cout << " (+" << stopping << " stopping)";
+    std::cout << "\n";
+    if (failed > 0) {
+        std::cout << "\033[31mFailed:\033[0m              " << failed << "\n";
+    }
+    if (exited > 0) {
+        std::cout << "\033[36mExited:\033[0m              " << exited << "\n";
+    }
+    if (backoff > 0) {
+        std::cout << "\033[35mBackoff:\033[0m             " << backoff << "\n";
+    }
+    std::cout << "Total Restarts:      " << total_restarts << "\n";
+    std::cout << "Average Uptime:      " << avg_uptime << "\n";
+    
+    // Health indicator
+    double health_score = (running_count > 0) ? (double(running) / total) * 100.0 : 0.0;
+    std::cout << "System Health:       ";
+    if (health_score >= 80.0) {
+        std::cout << "\033[32m" << std::fixed << std::setprecision(1) << health_score << "% (EXCELLENT)\033[0m\n";
+    } else if (health_score >= 60.0) {
+        std::cout << "\033[33m" << std::fixed << std::setprecision(1) << health_score << "% (GOOD)\033[0m\n";
+    } else if (health_score >= 40.0) {
+        std::cout << "\033[33m" << std::fixed << std::setprecision(1) << health_score << "% (WARNING)\033[0m\n";
+    } else {
+        std::cout << "\033[31m" << std::fixed << std::setprecision(1) << health_score << "% (CRITICAL)\033[0m\n";
     }
 }
 

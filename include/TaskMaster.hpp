@@ -11,6 +11,7 @@
 #include "ConfigParser.hpp"
 #include "ProcessMetrics.hpp"
 #include <iostream>
+#include <iomanip>
 #include "Logger.hpp"
 
 class TaskMaster {
@@ -46,10 +47,12 @@ private:
     bool handleStopCommand(std::istringstream& iss);
     bool handleRestartCommand(std::istringstream& iss);
     bool handleReloadCommand();
+    bool handleStatsCommand();
     bool handleHelpCommand();
     
     void printDetailedStatus(const std::string& filter = "");
     void printProcessDetails(const std::string& name, const std::unique_ptr<Process>& process);
+    void printProcessStats();
     std::string getStatusColor(ProcessState status);
     
     void removeObsoleteProcesses(const std::map<std::string, ProcessConfig>& new_configs);
