@@ -52,6 +52,7 @@ private:
     bool handleStatsCommand();
     bool handleLogsCommand(std::istringstream& iss);
     bool handleHelpCommand();
+    bool handleClearCommand();
     
     void printDetailedStatus(const std::string& filter = "");
     void printProcessDetails(const std::string& name, const std::unique_ptr<Process>& process);

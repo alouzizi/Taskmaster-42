@@ -1,4 +1,5 @@
 #include "../include/TaskMaster.hpp"
+#include <cstdlib>
 
 TaskMaster::TaskMaster(const std::string& config_file) 
     : config_file(config_file), running(false) {
@@ -104,6 +105,8 @@ bool TaskMaster::executeCommand(const std::string& command) {
         return handleStatsCommand();
     } else if (cmd == "logs") {
         return handleLogsCommand(iss);
+    } else if (cmd == "clear") {
+        return handleClearCommand();
     } else if (cmd == "quit" || cmd == "exit") {
         return false;
     } else if (cmd == "help") {
@@ -228,7 +231,14 @@ bool TaskMaster::handleHelpCommand() {
     std::cout << "  stop <name>             - Stop a process" << std::endl;
     std::cout << "  restart <name>          - Restart a process" << std::endl;
     std::cout << "  reload                  - Reload configuration" << std::endl;
+    std::cout << "  clear                   - Clear the terminal screen" << std::endl;
     std::cout << "  quit/exit               - Exit TaskMaster" << std::endl;
+    return true;
+}
+
+bool TaskMaster::handleClearCommand() {
+    int result = system("clear");
+    (void)result; // Explicitly ignore the return value
     return true;
 }
 
