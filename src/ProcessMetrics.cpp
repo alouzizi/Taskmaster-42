@@ -19,8 +19,6 @@ ProcessMetrics MetricsCollector::collectMetrics(pid_t pid) {
         return metrics; // Process doesn't exist
     }
     
-    metrics.cpu_percentage = calculateCpuPercentage(pid);
-    
     size_t memory_bytes = readMemoryUsage(pid);
     metrics.memory_usage_mb = memory_bytes / (1024 * 1024);
     
@@ -84,13 +82,6 @@ int MetricsCollector::countFileDescriptors(pid_t pid) {
     }
     closedir(dir);
     return count;
-}
-
-double MetricsCollector::calculateCpuPercentage(pid_t pid) {
-    (void)pid; // Suppress unused parameter warning
-    // Simple placeholder - could be enhanced with real CPU calculation
-    // For now, return a small random value to simulate CPU usage
-    return (rand() % 50) / 10.0; // 0.0% - 5.0%
 }
 
 std::string MetricsCollector::formatUptime(const std::chrono::steady_clock::time_point& start_time) {

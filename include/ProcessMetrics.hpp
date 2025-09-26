@@ -6,7 +6,6 @@
 #include <iomanip>
 
 struct ProcessMetrics {
-    double cpu_percentage = 0.0;
     size_t memory_usage_mb = 0;
     size_t memory_peak_mb = 0;
     int file_descriptors = 0;
@@ -24,5 +23,4 @@ private:
     size_t readMemoryUsage(pid_t pid);
     size_t readMemoryPeak(pid_t pid);
     int countFileDescriptors(pid_t pid);
-    double calculateCpuPercentage(pid_t pid);
 };

@@ -615,9 +615,8 @@ void TaskMaster::printProcessDetails(const std::string& name, const std::unique_
         
         std::cout << " (PID: " << pid << ", Uptime: " << uptime << ")\n";
         
-        // CPU and Memory info
-        std::cout << "  ├─ CPU: " << std::fixed << std::setprecision(1) 
-                  << metrics.cpu_percentage << "% | Memory: " 
+        // Memory info
+        std::cout << "  ├─ Memory: " 
                   << collector.formatBytes(metrics.memory_usage_mb * 1024 * 1024);
         
         if (metrics.memory_peak_mb > 0) {
